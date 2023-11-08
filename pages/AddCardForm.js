@@ -20,9 +20,45 @@ import getEncryptionKey from '../util/getEncryptionKey';
 
 function AddCardModal({ navigation, route }) {
     const item = route?.params?.item;
+    const ocrResult = route?.params?.ocrResult;
     useEffect(() => {
         if (item) setCard(item);
     }, [item]);
+
+    useEffect(() => {
+        if (ocrResult) {
+            const extractCardholderName = (ocrResult) => {
+                return ocrResult.find((text) => text.match(/^[A-Z][A-Z\s]+$/i)) || '';
+            };
+    
+            const extractCardNumber = (ocrResult) => {
+                return ocrResult.find((text) => text.match(/^\d{13,19}$/)) || '';
+            };
+    
+            const extractExpiryDate = (ocrResult) => {
+                // Regular expression to match MM/YY format (e.g., 05/23)
+                const expiryRegex = /\b\d{2}\/\d{2}\b/;
+                const match = ocrResult.find((text) => text.match(expiryRegex));
+                return match ? match.match(expiryRegex)[0] : '';
+            };
+    
+            const cardholderName = extractCardholderName(ocrResult);
+            const cardNumber = extractCardNumber(ocrResult);
+            const expiryDate = extractExpiryDate(ocrResult);
+    
+            // Use the extracted information to set the card state
+            setCard({
+                nickname: '', // Set your default values here
+                card_number: cardNumber,
+                expiry: expiryDate,
+                cvv: '',
+                color: 'black',
+                type: '',
+                name_on_card: cardholderName,
+            });
+        }
+    }, [ocrResult]);
+    
 
     const [card, setCard] = useState({
         nickname: '',

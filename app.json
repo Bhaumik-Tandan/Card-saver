@@ -33,19 +33,7 @@
                 "projectId": "f26cf6f9-5809-4aa2-bf74-370cdbacf72e"
             }
         },
-        "owner": "cardvault",
-        "plugins": [
-            [
-              "expo-build-properties",
-              {
-                "android": {
-                    "compileSdkVersion": 31,
-                    "targetSdkVersion": 31,
-                    "buildToolsVersion": "31.0.0"
-                }
-              }
-            ]
-          ]
+        "owner": "cardvault"
     },
     "react-native-google-mobile-ads": {
         "android_app_id": "ca-app-pub-5499479031752321~2533055801",

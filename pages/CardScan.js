@@ -85,7 +85,7 @@ function CardScan() {
         />
       )}
 
-<Pressable style={styles.captureButton} onPress={captureAndRecognize} disabled={isCameraActive}>
+<Pressable style={styles.captureButton} onPress={captureAndRecognize}>
         <Text style={styles.buttonText}>Take Picture</Text>
       </Pressable>
 

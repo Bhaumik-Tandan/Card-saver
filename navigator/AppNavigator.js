@@ -1,4 +1,4 @@
-import { EvilIcons } from '@expo/vector-icons';
+import { EvilIcons,Ionicons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import React from 'react';
 
@@ -28,6 +28,17 @@ const AppNavigator = (
                 component={CardNavigator}
             />
             <Tab.Screen
+                name={"Card Scan"}
+                component={CardScan}
+                options={{
+                    tabBarIcon: ({ color, size }) => (
+                        <Ionicons name="scan" size={size} color={color} />
+                    ),
+                    tabBarLabel: PAGES.CARD_SCAN,
+                    header: () => <BannerAd />,
+                }}
+            />
+            <Tab.Screen
                 name={PAGES.SETTINGS_NAVIGATOR}
                 component={SettingsNavigator}
                 options={{
@@ -35,17 +46,6 @@ const AppNavigator = (
                         <EvilIcons name="gear" size={size} color={color} />
                     ),
                     tabBarLabel: PAGES.SETTINGS,
-                    header: () => <BannerAd />,
-                }}
-            />
-            <Tab.Screen
-                name={"CardScan"}
-                component={CardScan}
-                options={{
-                    tabBarIcon: ({ color, size }) => (
-                        <EvilIcons name="gear" size={size} color={color} />
-                    ),
-                    tabBarLabel: PAGES.CARD_SCAN,
                     header: () => <BannerAd />,
                 }}
             />

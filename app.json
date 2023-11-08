@@ -2,7 +2,7 @@
     "expo": {
         "name": "CardVault",
         "slug": "cardvault",
-        "version": "1.6.0",
+        "version": "1.6.3",
         "orientation": "portrait",
         "icon": "./assets/icon.png",
         "userInterfaceStyle": "automatic",
@@ -15,7 +15,7 @@
         "ios": {
             "supportsTablet": true,
             "bundleIdentifier": "com.bhaumik.tandan.cardvault",
-            "buildNumber": "13"
+            "buildNumber": "14"
         },
         "android": {
             "adaptiveIcon": {
@@ -23,7 +23,7 @@
                 "backgroundColor": "#000"
             },
             "package": "com.bhaumik.tandan.cardvault",
-            "versionCode": 13
+            "versionCode": 14
         },
         "web": {
             "favicon": "./assets/favicon.png"
@@ -33,7 +33,21 @@
                 "projectId": "f26cf6f9-5809-4aa2-bf74-370cdbacf72e"
             }
         },
-        "owner": "cardvault"
+        "owner": "cardvault",
+        "plugins": [
+            [
+              "expo-camera",
+              {
+                "cameraPermission": "The app needs to access your camera to scan the card"
+              }
+            ],
+            [
+              "expo-image-picker",
+              {
+                "photosPermission": "The app needs to access your photos to get the card details from your galary"
+              }
+            ]
+          ]
     },
     "react-native-google-mobile-ads": {
         "android_app_id": "ca-app-pub-5499479031752321~2533055801",

@@ -35,17 +35,8 @@
         },
         "owner": "cardvault",
         "plugins": [
-            [
-              "expo-build-properties",
-              {
-                "android": {
-                    "compileSdkVersion": 31,
-                    "targetSdkVersion": 31,
-                    "buildToolsVersion": "31.0.0"
-                }
-              }
-            ]
-          ]
+            // expo-build-properties plugin removed
+        ]
     },
     "react-native-google-mobile-ads": {
         "android_app_id": "ca-app-pub-5499479031752321~2533055801",

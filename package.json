@@ -19,7 +19,7 @@
     "@react-navigation/native-stack": "^6.9.13",
     "card-validator": "^8.1.1",
     "crypto-es": "^2.0.4",
-    "eas-cli": "^5.2.0",
+    "eas-cli": "^16.17.4",
     "eslint": "^8.52.0",
     "eslint-config-universe": "^12.0.0",
     "expo": "~53.0.0",

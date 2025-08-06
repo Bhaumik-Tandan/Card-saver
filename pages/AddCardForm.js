@@ -7,6 +7,8 @@ import {
     TouchableOpacity,
     TextInput,
     ScrollView,
+    Alert,
+    ActivityIndicator,
 } from 'react-native';
 import Toast from 'react-native-root-toast';
 
@@ -16,37 +18,95 @@ import { CARDS } from '../constants/string';
 import { useAuth } from '../context/AuthContext';
 import { encryptData } from '../helper/encryption';
 import { getLocalStoreData, setLocalStoreData } from '../helper/localStorage';
+import { inputValidation, securityAudit, secureErrorHandler } from '../helper/securityUtils';
 import getEncryptionKey from '../util/getEncryptionKey';
 
 function AddCardModal({ navigation, route }) {
     const item = route?.params?.item;
     useEffect(() => {
-        if (item) setCard(item);
+        if (item) {
+            setCard(item);
+            // Log card editing if it's a scanned card
+            if (item.nickname && item.nickname.includes('Scanned')) {
+                securityAudit.logCardOperation('edit_scanned', true, item.type);
+            }
+        }
     }, [item]);
 
     const [card, setCard] = useState({
         nickname: '',
         card_number: '',
-        expiry: '', // Set the default value with the slash
+        expiry: '',
         cvv: '',
         color: 'black',
         type: '',
         name_on_card: '',
     });
 
+    const [errors, setErrors] = useState({});
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [validationErrors, setValidationErrors] = useState({});
+
     const { cards, setCards } = useAuth();
+    
     const hideModal = () => {
         navigation.navigate(PAGES.CARD_LIST);
     };
 
+    const validateForm = () => {
+        const newErrors = {};
+
+        // Validate nickname
+        if (!card.nickname.trim()) {
+            newErrors.nickname = 'Card nickname is required';
+        } else if (card.nickname.length < 2) {
+            newErrors.nickname = 'Nickname must be at least 2 characters';
+        }
+
+        // Validate card number
+        const cardNumberValidation = inputValidation.validateCardNumber(card.card_number);
+        if (!cardNumberValidation.isValid) {
+            newErrors.card_number = cardNumberValidation.error;
+        }
+
+        // Validate expiry date
+        const expiryValidation = inputValidation.validateExpiryDate(card.expiry);
+        if (!expiryValidation.isValid) {
+            newErrors.expiry = expiryValidation.error;
+        }
+
+        // Validate CVV
+        const cvvValidation = inputValidation.validateCVV(card.cvv, card.type);
+        if (!cvvValidation.isValid) {
+            newErrors.cvv = cvvValidation.error;
+        }
+
+        // Validate cardholder name
+        if (!card.name_on_card.trim()) {
+            newErrors.name_on_card = 'Cardholder name is required';
+        }
+
+        setErrors(newErrors);
+        return Object.keys(newErrors).length === 0;
+    };
+
     const handleEditCard = async () => {
+        if (!validateForm()) {
+            Toast.show('Please fix the errors before saving', {
+                duration: Toast.durations.LONG,
+                position: Toast.positions.BOTTOM,
+            });
+            return;
+        }
+
+        setIsSubmitting(true);
         const editedCard = card;
         const index = item.index;
+        
         try {
             // Check if the card already exists
             if (!cards || index < 0 || index >= cards.length) {
-                alert('Invalid index or card does not exist');
-                return;
+                throw new Error('Invalid index or card does not exist');
             }
 
             const encryptionKey = await getEncryptionKey();
@@ -54,21 +114,35 @@ function AddCardModal({ navigation, route }) {
             const encryptCards = await getLocalStoreData(CARDS);
 
             encryptCards[index] = encryptedCard;
-
             await updateCardStorage(encryptCards);
 
             const updatedCards = [...cards];
             updatedCards[index] = { ...editedCard };
 
             setCards(updatedCards);
+            
+            // Log successful edit
+            securityAudit.logCardOperation('edit', true, editedCard.type);
+            
+            Toast.show('Card updated successfully', {
+                duration: Toast.durations.SHORT,
+                position: Toast.positions.BOTTOM,
+            });
+            
             navigation.navigate(PAGES.CARD_LIST);
         } catch (error) {
-            console.error('An error occurred:', error);
+            const userMessage = secureErrorHandler.handleError(error, 'edit_card');
+            Toast.show(userMessage, {
+                duration: Toast.durations.LONG,
+                position: Toast.positions.BOTTOM,
+            });
+            
+            // Log failed edit
+            securityAudit.logCardOperation('edit', false);
+        } finally {
+            setIsSubmitting(false);
         }
     };
-
-    const [isCardNumberValid, setIsCardNumberValid] = useState(true);
-    const [isCVVValid, setIsCVVValid] = useState(true);
 
     const cardExists = (newCard) => {
         return cards.some((card) => card.card_number === newCard.card_number);
@@ -89,12 +163,16 @@ function AddCardModal({ navigation, route }) {
     const updateCards = (newCard) => {
         setCards((prev) => [{ index: prev.length, ...newCard }, ...prev]);
     };
+
     const onAddCard = async (newCard) => {
         try {
             // Check if the card already exists
             if (cardExists(newCard)) {
-                alert('Card already exists');
-                return;
+                Toast.show('Card already exists', {
+                    duration: Toast.durations.LONG,
+                    position: Toast.positions.BOTTOM,
+                });
+                return false;
             }
 
             const encryptionKey = await getEncryptionKey();
@@ -108,10 +186,26 @@ function AddCardModal({ navigation, route }) {
             }
 
             updateCards(newCard);
-            hideModal();
+            
+            // Log successful addition
+            securityAudit.logCardOperation('add', true, newCard.type);
+            
+            Toast.show('Card added successfully', {
+                duration: Toast.durations.SHORT,
+                position: Toast.positions.BOTTOM,
+            });
+            
             return true;
         } catch (error) {
-            console.error('An error occurred:', error);
+            const userMessage = secureErrorHandler.handleError(error, 'add_card');
+            Toast.show(userMessage, {
+                duration: Toast.durations.LONG,
+                position: Toast.positions.BOTTOM,
+            });
+            
+            // Log failed addition
+            securityAudit.logCardOperation('add', false);
+            return false;
         }
     };
 
@@ -123,7 +217,10 @@ function AddCardModal({ navigation, route }) {
 
         // Validate the card number in real-time
         const cardNumberValidation = CardValidator.number(formattedInput);
-        setIsCardNumberValid(cardNumberValidation.isValid);
+        setValidationErrors(prev => ({
+            ...prev,
+            card_number: cardNumberValidation.isValid ? null : 'Invalid card number'
+        }));
 
         // Update card type based on the validation result
         let cardType = cardNumberValidation.card
@@ -131,13 +228,13 @@ function AddCardModal({ navigation, route }) {
             : '';
 
         // Manually check for Discover card based on BIN range
-        const discoverBINPattern = /^6(?:011|5[0-9]{2})/; // Discover cards typically start with '6011' or '65'
+        const discoverBINPattern = /^6(?:011|5[0-9]{2})/;
         if (discoverBINPattern.test(formattedInput)) {
-            cardType = 'Discover';
+            cardType = 'discover';
         }
 
         // Manually check for Rupay card based on BIN range
-        const rupayBINPattern = /^65/; // Rupay cards start with '65'
+        const rupayBINPattern = /^65/;
         if (rupayBINPattern.test(formattedInput)) {
             cardType = 'rupay';
         }
@@ -150,7 +247,6 @@ function AddCardModal({ navigation, route }) {
         }));
     };
 
-    // Function to format and validate the expiry date
     const formatAndValidateExpiry = (text) => {
         // Remove any non-numeric characters
         const formattedText = text.replace(/[^0-9]/g, '');
@@ -164,192 +260,270 @@ function AddCardModal({ navigation, route }) {
             formattedExpiry = formattedText;
         }
 
-        // Always set the state with the formatted expiry
+        // Validate expiry date
+        const expiryValidation = inputValidation.validateExpiryDate(formattedExpiry);
+        setValidationErrors(prev => ({
+            ...prev,
+            expiry: expiryValidation.isValid ? null : expiryValidation.error
+        }));
+
         setCard({ ...card, expiry: formattedExpiry });
     };
 
     const validateCVV = (cvv) => {
-        // Check if the card type is Amex and adjust the CVV validation accordingly
-        const isAmex = card.type.toLowerCase() === 'american-express';
+        const cvvValidation = inputValidation.validateCVV(cvv, card.type);
+        setValidationErrors(prev => ({
+            ...prev,
+            cvv: cvvValidation.isValid ? null : cvvValidation.error
+        }));
 
-        // Define the CVV length based on the card type (Amex: 4 digits, others: 3 digits)
-        const expectedCVVLength = isAmex ? 4 : 3;
-
-        // Validate the CVV length and whether it's numeric
-        const isValidCVV =
-            cvv.length === expectedCVVLength && /^\d+$/.test(cvv);
-
-        setIsCVVValid(isValidCVV);
+        setCard({ ...card, cvv });
     };
 
     const handleAddCard = async () => {
-        if (!isCardNumberValid || !card.card_number) {
-            Toast.show('Invalid Card Number', {
+        if (!validateForm()) {
+            Toast.show('Please fix the errors before saving', {
                 duration: Toast.durations.LONG,
-            });
-            return;
-        }
-        if (!validateExpiry(card.expiry)) {
-            Toast.show('Invalid Expiry Date', {
-                duration: Toast.durations.LONG,
-            });
-            return;
-        }
-        if (!isCVVValid || !card.cvv) {
-            Toast.show('Invalid CVV', {
-                duration: Toast.durations.LONG,
+                position: Toast.positions.BOTTOM,
             });
             return;
         }
 
-        if (!card.name_on_card) {
-            Toast.show('Please enter a name on card', {
-                duration: Toast.durations.LONG,
-            });
-            return;
-        }
+        setIsSubmitting(true);
+        
+        try {
+            // Sanitize cardholder name
+            const sanitizedCard = {
+                ...card,
+                name_on_card: inputValidation.sanitizeCardholderName(card.name_on_card),
+                nickname: card.nickname.trim()
+            };
 
-        if (!card.nickname) {
-            Toast.show('Please enter a nickname', {
+            const success = await onAddCard(sanitizedCard);
+            if (success) {
+                hideModal();
+            }
+        } catch (error) {
+            const userMessage = secureErrorHandler.handleError(error, 'handle_add_card');
+            Toast.show(userMessage, {
                 duration: Toast.durations.LONG,
+                position: Toast.positions.BOTTOM,
             });
-            return;
+        } finally {
+            setIsSubmitting(false);
         }
-        // Validate and process the card data
-
-        // Call the onAddCard function with the card data
-        const cardAdded = await onAddCard(card);
-        if (!cardAdded) return;
-        // Clear the form
-        setCard({
-            nickname: '',
-            card_number: '',
-            expiry: '', // Set the default value with the slash
-            cvv: '',
-            color: 'black',
-            type: '',
-            name_on_card: '',
-        });
-        setIsCardNumberValid(true);
-        setIsCVVValid(true);
     };
 
     const validateExpiry = (text) => {
-        // Use a regular expression to match the MM/YY format (e.g., 12/23)
-        const regex = /^(0[1-9]|1[0-2])\/\d{2}$/;
-        return regex.test(text);
+        const expiryValidation = inputValidation.validateExpiryDate(text);
+        return expiryValidation.isValid;
     };
 
     return (
-        <View style={styles.modalContent}>
-            <ScrollView>
-                <Card item={card} showCard />
-                <TextInput
-                    style={styles.input}
-                    placeholder="Card Nickname (e.g. My Visa Card)"
-                    value={card.nickname}
-                    onChangeText={(text) =>
-                        setCard({ ...card, nickname: text })
-                    }
-                />
-                <TextInput
-                    style={[
-                        styles.input,
-                        !isCardNumberValid && styles.invalidInput,
-                    ]}
-                    placeholder="Card Number"
-                    keyboardType="numeric"
-                    value={card.card_number}
-                    onChangeText={formatCardNumber}
-                    maxLength={19}
-                />
-                <TextInput
-                    style={styles.input}
-                    placeholder="Name on the Card"
-                    value={card.name_on_card}
-                    onChangeText={(text) =>
-                        setCard({ ...card, name_on_card: text })
-                    }
-                />
-                <View
-                    style={{
-                        flexDirection: 'row',
-                        justifyContent: 'space-between',
-                    }}
-                >
-                    <TextInput
-                        style={[
-                            styles.input,
-                            !validateExpiry(card.expiry) && styles.invalidInput,
-                        ]}
-                        placeholder="Expiry Date (MM/YY)"
-                        value={card.expiry}
-                        onChangeText={formatAndValidateExpiry}
-                        maxLength={5}
-                        keyboardType="numeric"
-                    />
-                    <TextInput
-                        style={[
-                            styles.input,
-                            !isCVVValid && styles.invalidInput,
-                        ]}
-                        placeholder="CVV"
-                        keyboardType="numeric"
-                        value={card.cvv}
-                        onChangeText={(text) => {
-                            setCard({ ...card, cvv: text });
-                            // Validate the CVV in real-time
-                            validateCVV(text);
-                        }}
-                        maxLength={4}
-                    />
-                </View>
-                <TouchableOpacity
-                    style={styles.addButton}
-                    onPress={item ? handleEditCard : handleAddCard}
-                >
-                    <Text style={styles.addButtonText}>
-                        {item ? 'Edit Card' : 'Add Card'}
-                    </Text>
+        <ScrollView style={styles.container}>
+            <View style={styles.header}>
+                <TouchableOpacity onPress={hideModal} style={styles.closeButton}>
+                    <Text style={styles.closeButtonText}>✕</Text>
                 </TouchableOpacity>
-            </ScrollView>
-        </View>
+                <Text style={styles.headerTitle}>
+                    {item ? 'Edit Card' : 'Add New Card'}
+                </Text>
+                <View style={styles.placeholder} />
+            </View>
+
+            <View style={styles.cardPreview}>
+                <Card item={card} />
+            </View>
+
+            <View style={styles.form}>
+                <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Card Nickname</Text>
+                    <TextInput
+                        style={[styles.input, errors.nickname && styles.inputError]}
+                        value={card.nickname}
+                        onChangeText={(text) => setCard({ ...card, nickname: text })}
+                        placeholder="e.g., Personal Visa, Work Card"
+                        placeholderTextColor="#999"
+                    />
+                    {errors.nickname && (
+                        <Text style={styles.errorText}>{errors.nickname}</Text>
+                    )}
+                </View>
+
+                <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Card Number</Text>
+                    <TextInput
+                        style={[styles.input, errors.card_number && styles.inputError]}
+                        value={card.card_number}
+                        onChangeText={formatCardNumber}
+                        placeholder="1234 5678 9012 3456"
+                        placeholderTextColor="#999"
+                        keyboardType="numeric"
+                        maxLength={19}
+                    />
+                    {errors.card_number && (
+                        <Text style={styles.errorText}>{errors.card_number}</Text>
+                    )}
+                    {validationErrors.card_number && (
+                        <Text style={styles.errorText}>{validationErrors.card_number}</Text>
+                    )}
+                </View>
+
+                <View style={styles.row}>
+                    <View style={[styles.inputGroup, styles.halfWidth]}>
+                        <Text style={styles.label}>Expiry Date</Text>
+                        <TextInput
+                            style={[styles.input, errors.expiry && styles.inputError]}
+                            value={card.expiry}
+                            onChangeText={formatAndValidateExpiry}
+                            placeholder="MM/YY"
+                            placeholderTextColor="#999"
+                            keyboardType="numeric"
+                            maxLength={5}
+                        />
+                        {errors.expiry && (
+                            <Text style={styles.errorText}>{errors.expiry}</Text>
+                        )}
+                    </View>
+
+                    <View style={[styles.inputGroup, styles.halfWidth]}>
+                        <Text style={styles.label}>CVV</Text>
+                        <TextInput
+                            style={[styles.input, errors.cvv && styles.inputError]}
+                            value={card.cvv}
+                            onChangeText={validateCVV}
+                            placeholder="123"
+                            placeholderTextColor="#999"
+                            keyboardType="numeric"
+                            maxLength={4}
+                            secureTextEntry
+                        />
+                        {errors.cvv && (
+                            <Text style={styles.errorText}>{errors.cvv}</Text>
+                        )}
+                    </View>
+                </View>
+
+                <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Cardholder Name</Text>
+                    <TextInput
+                        style={[styles.input, errors.name_on_card && styles.inputError]}
+                        value={card.name_on_card}
+                        onChangeText={(text) => setCard({ ...card, name_on_card: text })}
+                        placeholder="JOHN DOE"
+                        placeholderTextColor="#999"
+                        autoCapitalize="characters"
+                    />
+                    {errors.name_on_card && (
+                        <Text style={styles.errorText}>{errors.name_on_card}</Text>
+                    )}
+                </View>
+
+                <TouchableOpacity
+                    style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
+                    onPress={item ? handleEditCard : handleAddCard}
+                    disabled={isSubmitting}
+                >
+                    {isSubmitting ? (
+                        <ActivityIndicator color="white" />
+                    ) : (
+                        <Text style={styles.submitButtonText}>
+                            {item ? 'Update Card' : 'Add Card'}
+                        </Text>
+                    )}
+                </TouchableOpacity>
+            </View>
+        </ScrollView>
     );
 }
 
 const styles = StyleSheet.create({
-    input: {
+    container: {
+        flex: 1,
+        backgroundColor: '#f5f5f5',
+    },
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: 20,
         backgroundColor: 'white',
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: 'gray',
-        padding: 12,
-        marginBottom: 16,
-        fontSize: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: '#e0e0e0',
     },
-    invalidInput: {
-        borderColor: 'red', // Change border color for invalid input
-    },
-    addButton: {
-        backgroundColor: 'blue',
-        borderRadius: 10,
-        padding: 12,
+    closeButton: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        backgroundColor: '#f0f0f0',
+        justifyContent: 'center',
         alignItems: 'center',
     },
-    addButtonText: {
+    closeButtonText: {
+        fontSize: 18,
+        color: '#666',
+    },
+    headerTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#333',
+    },
+    placeholder: {
+        width: 30,
+    },
+    cardPreview: {
+        padding: 20,
+        alignItems: 'center',
+    },
+    form: {
+        padding: 20,
+    },
+    inputGroup: {
+        marginBottom: 20,
+    },
+    label: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#333',
+        marginBottom: 8,
+    },
+    input: {
+        borderWidth: 1,
+        borderColor: '#ddd',
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 16,
+        backgroundColor: 'white',
+    },
+    inputError: {
+        borderColor: '#FF3B30',
+    },
+    errorText: {
+        color: '#FF3B30',
+        fontSize: 14,
+        marginTop: 4,
+    },
+    row: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+    },
+    halfWidth: {
+        width: '48%',
+    },
+    submitButton: {
+        backgroundColor: '#007AFF',
+        padding: 16,
+        borderRadius: 8,
+        alignItems: 'center',
+        marginTop: 20,
+    },
+    submitButtonDisabled: {
+        opacity: 0.6,
+    },
+    submitButtonText: {
         color: 'white',
         fontSize: 16,
-        fontWeight: 'bold',
-    },
-    modal: {
-        justifyContent: 'flex-end',
-        margin: 0,
-    },
-    modalContent: {
-        backgroundColor: 'white',
-        padding: 16,
-        borderTopLeftRadius: 10,
-        borderTopRightRadius: 10,
+        fontWeight: '600',
     },
 });
 

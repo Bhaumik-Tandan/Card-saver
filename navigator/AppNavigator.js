@@ -28,6 +28,17 @@ const AppNavigator = (
                 component={CardNavigator}
             />
             <Tab.Screen
+                name={PAGES.CARD_SCAN}
+                component={CardScan}
+                options={{
+                    tabBarIcon: ({ color, size }) => (
+                        <EvilIcons name="camera" size={size} color={color} />
+                    ),
+                    tabBarLabel: PAGES.CARD_SCAN,
+                    headerShown: false,
+                }}
+            />
+            <Tab.Screen
                 name={PAGES.SETTINGS_NAVIGATOR}
                 component={SettingsNavigator}
                 options={{
@@ -35,17 +46,6 @@ const AppNavigator = (
                         <EvilIcons name="gear" size={size} color={color} />
                     ),
                     tabBarLabel: PAGES.SETTINGS,
-                    header: () => <BannerAd />,
-                }}
-            />
-            <Tab.Screen
-                name={"CardScan"}
-                component={CardScan}
-                options={{
-                    tabBarIcon: ({ color, size }) => (
-                        <EvilIcons name="gear" size={size} color={color} />
-                    ),
-                    tabBarLabel: PAGES.CARD_SCAN,
                     header: () => <BannerAd />,
                 }}
             />
